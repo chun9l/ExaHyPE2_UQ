@@ -53,10 +53,10 @@ class ExahypeModel(umbridge.Model):
         if self.logging == True:
             print("Logging enabled")
             self.active_time_log = open(self.output_dir + os.sep + "active_time.log", "a")
-            header = ["request", "start_time", "end_time"]
+            header = ["request", "level", "start_time", "end_time"]
             self.writer = csv.writer(self.active_time_log, delimiter=',')
             self.writer.writerow(header)
-            self.writer.writerow([self.request, self.start_time, datetime.datetime.now().strftime("%H:%M:%S.%f %d/%m/%Y")])
+            self.writer.writerow([self.request, "None", self.start_time, datetime.datetime.now().strftime("%H:%M:%S.%f %d/%m/%Y")])
             self.active_time_log.flush()
 
     def get_input_sizes(self, config):
@@ -87,7 +87,7 @@ class ExahypeModel(umbridge.Model):
             ssha18, _ = SSHA18.predict(np.array([parameters[0]]))
             ssha19, _ = SSHA19.predict(np.array([parameters[0]]))
             if self.logging == True:
-                self.writer.writerow([self.request, self.start_time, datetime.datetime.now().strftime("%H:%M:%S.%f %d/%m/%Y")])
+                self.writer.writerow([self.request, level, self.start_time, datetime.datetime.now().strftime("%H:%M:%S.%f %d/%m/%Y")])
                 self.active_time_log.flush()
 
             return [[time18[0][0].item() / 60.0, time19[0][0].item() / 60.0, ssha18[0][0].item(), ssha19[0][0].item()]]
@@ -124,7 +124,7 @@ class ExahypeModel(umbridge.Model):
             time19, ssha19 = getQOI(df19)
             
             if self.logging == True:
-                self.writer.writerow([self.request, self.start_time, datetime.datetime.now().strftime("%H:%M:%S.%f %d/%m/%Y")])
+                self.writer.writerow([self.request, level, self.start_time, datetime.datetime.now().strftime("%H:%M:%S.%f %d/%m/%Y")])
                 self.active_time_log.flush()
 
             return [[time18 / 60.0, time19 / 60.0, ssha18, ssha19]] 
