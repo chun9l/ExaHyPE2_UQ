@@ -1,11 +1,14 @@
 #! /bin/bash
 
+##################################################################################################################################
+# Change to suit your needs
+
 #SBATCH --partition=shared
 #SBATCH --ntasks-per-node=2
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=16
 #SBATCH --mem=32G
-#SBATCH --time=50:00:00
-
+#SBATCH --time=72:00:00
+###################################################################################################################################
 
 # Launch model server, send back server URL and wait so that SLURM does not cancel the allocation.
 
@@ -29,17 +32,23 @@ function get_available_port {
 port=$(get_available_port)
 export PORT=$port
 
+####################################################################################################################################
+# Only change commands within this section
+
+# Load modules
 module purge
-module load gcc/14.2 openmpi/5.0.9
+module load gcc/13.2 openmpi/4.1.5 hdf5 netcdf cmake/3.30.5
 
 . ~/.bashrc
 conda activate python3.12
 
-# Assume that server sets the port according to the environment variable 'PORT'.
-# Otherwise the job script will be stuck waiting for model server's response.
-python -u ~/nobackup/ExaHyPE2_UQ/tinyda_server.py &
+# Python script that gets node usage (Optional)
+# python ~/nobackup/ExaHyPE2_UQ/umbridge/hpc/cpu_ram_log.py -u mghw54 -o ${SLURM_ARRAY_JOB_ID}_$SLURM_ARRAY_TASK_ID.log --interval=5 &
 
+# Launch UM-Bridge server
+python -u ~/nobackup/ExaHyPE2_UQ/FWI_tinyda_server.py &
 
+#####################################################################################################################################
 host=$(hostname -I | awk '{print $1}')
 
 echo "Waiting for model server to respond at $host:$port..."

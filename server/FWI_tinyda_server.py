@@ -1,51 +1,50 @@
 import umbridge
-import csv
 import os
 import json
-import datetime
 import numpy as np
 import pandas as pd
 import torch
 from GP.weighted_gp import WeightedGP
+import datetime
+import csv
 
 def processExahype2Data(num):
     num["ssha"] = pd.to_numeric(num["data(0)"] + num["data(3)"])
     return num
 
 def getQOI(num):
-    max_id = num["ssha"].idxmax()
-    max_row = num.loc[max_id]
-    return (max_row["t"], max_row["ssha"])
+    ssha = num["ssha"].values
+    time = num["t"].values
+    return time, ssha
 
 # Load GP Model. Change to your path
-gp_dir = "/cosma/apps/do009/dc-loi1/ExaHyPE2_UQ/GP/"
+gp_dir = "/nobackup/mghw54/ExaHyPE2_UQ/GP/"
 
-with open(f"{gp_dir}Time18.pkl", "rb") as f:
-    Time18 = torch.load(f, map_location=torch.device("cpu"), weights_only=False)
-    Time18.device = "cpu"
+with open(f"{gp_dir}Series18.pkl", "rb") as f:
+    Series18 = torch.load(f, map_location=torch.device("cpu"), weights_only=False)
+    Series18.device = "cpu"
 
-with open(f"{gp_dir}Time19.pkl", "rb") as f:
-    Time19 = torch.load(f, map_location=torch.device("cpu"), weights_only=False)
-    Time19.device = "cpu"
-
-with open(f"{gp_dir}SSHA18.pkl", "rb") as f:
-    SSHA18 = torch.load(f, map_location=torch.device("cpu"), weights_only=False)
-    SSHA18.device = "cpu"
-
-with open(f"{gp_dir}SSHA19.pkl", "rb") as f:
-    SSHA19 = torch.load(f, map_location=torch.device("cpu"), weights_only=False)
-    SSHA19.device = "cpu"
+with open(f"{gp_dir}Series19.pkl", "rb") as f:
+    Series19 = torch.load(f, map_location=torch.device("cpu"), weights_only=False)
+    Series19.device = "cpu"
 
 class ExahypeModel(umbridge.Model):
     def __init__(self, logging=False):
         super().__init__("forward")
         self.start_time = datetime.datetime.now().strftime("%H:%M:%S.%f %d/%m/%Y")
-        self.request=0
+        self.request = 0
         self.logging = logging
-        self.slurm_id = str(os.getenv("SLURM_ARRAY_JOB_ID", 0))
-        self.job_arr_id = str(os.getenv("SLURM_ARRAY_TASK_ID", 0))
-        self.source_dir = f"/cosma/apps/do009/dc-loi1/Peano/applications/shallow-water/tohoku-tsunami/"
-        self.output_dir = f"/cosma/apps/do009/dc-loi1/Peano/applications/shallow-water/tohoku-tsunami/" + os.sep + str(self.slurm_id) + "_" + str(self.job_arr_id) + "/"
+        self.time = np.linspace(0.0, 6000.0, 100) # Define time series
+        try:
+            self.slurm_id = str(os.environ["SLURM_ARRAY_JOB_ID"])
+            self.job_arr_id = str(os.environ["SLURM_ARRAY_TASK_ID"])
+        except:
+            print("Not in SLURM evironment")
+            self.slurm_id = "0"
+            self.job_arr_id = "0"
+
+        self.source_dir = f"/nobackup/mghw54/Peano/applications/shallow-water/tohoku-tsunami/"
+        self.output_dir = "/nobackup/mghw54/Peano/applications/shallow-water/tohoku-tsunami" + os.sep + str(self.slurm_id) + "_" + str(self.job_arr_id) + "/"
         self.input_file = "tohoku-tsunami.json" # Select input file 
         
         os.system(f"mkdir -p {self.output_dir}")
@@ -54,7 +53,7 @@ class ExahypeModel(umbridge.Model):
             print("Logging enabled")
             self.active_time_log = open(self.output_dir + os.sep + "active_time.log", "a")
             header = ["request", "level", "chain_id", "start_time", "end_time"]
-            self.writer = csv.writer(self.active_time_log, delimiter=',')
+            self.writer = csv.writer(self.active_time_log, delimiter=",")
             self.writer.writerow(header)
             self.writer.writerow([self.request, "None", "None", self.start_time, datetime.datetime.now().strftime("%H:%M:%S.%f %d/%m/%Y")])
             self.active_time_log.flush()
@@ -63,7 +62,11 @@ class ExahypeModel(umbridge.Model):
         return [2] 
 
     def get_output_sizes(self, config):
-        return [4] 
+        return [100, 100] 
+
+    def process_parameters(self, parameters):
+        parameters = np.repeat(parameters, 100, axis=0)
+        return np.hstack([parameters, self.time.reshape(-1, 1)])
 
     def __call__(self, parameters, config):
         level = str(config.get("level"))
@@ -72,21 +75,22 @@ class ExahypeModel(umbridge.Model):
         if level not in ["0", "1", "2"]:
             raise Exception("level must be 0, 1 or 2")
 
+        parameters = self.process_parameters(parameters)
+
         # Run the model 
         if level == "0":
             if self.logging == True:
                 self.request += 1
                 self.start_time = datetime.datetime.now().strftime("%H:%M:%S.%f %d/%m/%Y")
 
-            time18, _ = Time18.predict(np.array([parameters[0]]))
-            time19, _ = Time19.predict(np.array([parameters[0]]))
-            ssha18, _ = SSHA18.predict(np.array([parameters[0]]))
-            ssha19, _ = SSHA19.predict(np.array([parameters[0]]))
+            ssha18, _ = Series18.predict(np.array(parameters), return_scaled=True)
+            ssha19, _ = Series19.predict(np.array(parameters), return_scaled=True)
+
             if self.logging == True:
                 self.writer.writerow([self.request, level, chain_id, self.start_time, datetime.datetime.now().strftime("%H:%M:%S.%f %d/%m/%Y")])
                 self.active_time_log.flush()
 
-            return [[time18[0][0].item() / 60.0, time19[0][0].item() / 60.0, ssha18[0][0].item(), ssha19[0][0].item()]]
+            return [ssha18.detach().numpy().flatten().tolist(), ssha19.detach().numpy().flatten().tolist()]
 
         else:
             if self.logging == True:
@@ -105,7 +109,7 @@ class ExahypeModel(umbridge.Model):
                 f.truncate()
 
             os.chdir(source_dir)
-            os.system(f"OMP_NUM_THREADS=16 mpirun -n 2 --map-by numa:PE=16 ./ExaHyPE --config-file {self.output_dir + self.input_file}")
+            os.system(f"srun -n 2 -c 16 --mpi=pmix_v4  ./ExaHyPE --config-file {self.output_dir + self.input_file}")
         
         probe18_path = self.output_dir + os.sep + "Probes-rank-0.csv"
         probe19_path = self.output_dir + os.sep + "Probes-rank-1.csv"
@@ -114,21 +118,30 @@ class ExahypeModel(umbridge.Model):
             df18 = pd.read_csv(probe18_path, skipinitialspace=True)
             df19 = pd.read_csv(probe19_path, skipinitialspace=True)
 
+            # sort according to time for interpolation
+            df18.sort_values(by=["t"], inplace=True)
+            df19.sort_values(by=["t"], inplace=True)
+
             df18 = processExahype2Data(df18)
             df19 = processExahype2Data(df19)
 
             time18, ssha18 = getQOI(df18)
             time19, ssha19 = getQOI(df19)
-            
+
+            # interpolate data 
+            y18 = Series18._scale_outputs(np.interp(parameters[:, 2], time18, ssha18).reshape(-1, 1)).flatten()
+            y19 = Series19._scale_outputs(np.interp(parameters[:, 2], time19, ssha19).reshape(-1, 1)).flatten()
+
             if self.logging == True:
                 self.writer.writerow([self.request, level, chain_id, self.start_time, datetime.datetime.now().strftime("%H:%M:%S.%f %d/%m/%Y")])
                 self.active_time_log.flush()
 
-            return [[time18 / 60.0, time19 / 60.0, ssha18, ssha19]] 
+            return [y18.tolist(), y19.tolist()] 
 
         else:
-            print("Incomplete simluation output!")
-            return [[0.0, 0.0, 0.0, 0.0]]
+            print("Incomplete simulation output!")
+            return [[0.0, 0.0]]
+             
 
     def supports_evaluate(self):
         return True
@@ -140,4 +153,3 @@ else:
 
 model = ExahypeModel(logging=True)
 umbridge.serve_models([model], int(port))
-

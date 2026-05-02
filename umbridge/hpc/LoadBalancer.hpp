@@ -12,18 +12,20 @@
 #include <set>
 #include <regex>
 #include <sstream>
+#include <condition_variable>
+#include <queue>
 
 // Run a shell command and get the result.
 // Warning: Prone to injection, do not call with user-supplied arguments.
 // Note: POSIX specific and may not run on other platforms (e.g. Windows), but most HPC systems are POSIX-compliant.
 // Using an external library (e.g. Boost) would be cleaner, but not worth the effort of managing another dependency.
-std::string get_command_output(const std::string& command) {
+std::string getCommandOutput(const std::string& command) {
     std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(command.c_str(), "r"), &pclose);
 
     if (!pipe) {
-        std::string error_msg = "Failed to run command: " + command + "\n"
+        std::string errorMsg = "Failed to run command: " + command + "\n"
                               + "popen failed with error: " + std::strerror(errno) + "\n"; 
-        throw std::runtime_error(error_msg);
+        throw std::runtime_error(errorMsg);
     }
 
     // Buffer size can be small and is largely unimportant since most commands we use only return a single line.
@@ -37,19 +39,18 @@ std::string get_command_output(const std::string& command) {
 }
 
 // Wait until a file exists using polling. 
-// Improvements: Use inotify instead to save cpu cycles
-void wait_for_file(const std::filesystem::path& file_path, std::chrono::milliseconds polling_cycle) {
-    while (!std::filesystem::exists(file_path)) {
-        std::this_thread::sleep_for(polling_cycle);
+void waitForFile(const std::filesystem::path& filePath, std::chrono::milliseconds pollingCycle) {
+    while (!std::filesystem::exists(filePath)) {
+        std::this_thread::sleep_for(pollingCycle);
     }
 }
 
-std::string read_line_from_file(const std::filesystem::path& file_path) {
-    std::ifstream file(file_path);
+std::string readLineFromFile(const std::filesystem::path& filePath) {
+    std::ifstream file(filePath);
 
     if (!file.is_open()) {
-        std::string error_msg = "Unable to open file: '" + file_path.string() + "'\n";
-        throw std::runtime_error(error_msg);
+        std::string errorMsg = "Unable to open file: '" + filePath.string() + "'\n";
+        throw std::runtime_error(errorMsg);
     }
 
     std::string line;
@@ -58,7 +59,7 @@ std::string read_line_from_file(const std::filesystem::path& file_path) {
     return line;
 }
 
-void remove_trailing_newline(std::string& s) {
+void removeTrailingNewline(std::string& s) {
     if (!s.empty() && s.back() == '\n') {
         s.pop_back();
     }
@@ -100,36 +101,45 @@ public:
     virtual ~Job() = default;
 
     virtual std::string getJobId() const = 0;
-    virtual void set_busyness(bool status) = 0;
-    virtual bool get_busyness() = 0;
+    virtual void setBusyness(bool status) = 0;
+    virtual bool getBusyness() const = 0;
 };
 
 
 // Submits SLURM job to spawn model server in compute node
-// Suggestion: change into job arrays
 class SlurmJob : public Job {
 public:
-    SlurmJob(const std::string id): job_id(id) {}
+    SlurmJob(const std::string id): jobID(id) {}
+    
+    // Called by the load balancer so the job can notify waiters when it becomes free.
+    void setFreeNotifier(std::function<void()> notifier) {
+        freeNotifier = std::move(notifier);
+    }
 
-    void set_busyness(bool status) override {
-        is_busy = status;
+    void setBusyness(bool busyness) override {
+        isBusy = busyness;
+        // Notify the load balancer's request queue that a server has become available.
+        if (!isBusy && freeNotifier) {
+            freeNotifier();
+        }
     }
     
-    bool get_busyness() override {
-        return is_busy;
+    bool getBusyness() const override {
+        return isBusy;
     }
 
     ~SlurmJob() override {
-        std::system(("scancel " + job_id).c_str());
+        std::system(("scancel " + jobID).c_str());
     }
 
     std::string getJobId() const override {
-        return job_id;
+        return jobID;
     }
     
 private:
-    std::string job_id;
-    bool is_busy = false;
+    std::string jobID;
+    bool isBusy = false;
+    std::function<void()> freeNotifier;
 };
 
 
@@ -139,60 +149,60 @@ class JobSubmitter {
 public:
     virtual ~JobSubmitter() = default;
 
-    virtual std::string submit(int num_server, const std::string& job_script, const std::map<std::string, std::string>& env) = 0;
+    virtual std::string submit(int numServer, const std::string& jobScript, const std::map<std::string, std::string>& env) = 0;
 };
 
 class SlurmSubmitter : public JobSubmitter {
 public:
-    SlurmSubmitter(std::chrono::milliseconds submission_delay) 
-    : submission_delay(submission_delay) {}
+    SlurmSubmitter(std::chrono::milliseconds submissionDelay) 
+    : submissionDelay(submissionDelay) {}
 
-    std::string submit(int num_server, const std::string& job_script, const std::map<std::string, std::string>& env) override {
+    std::string submit(int numServer, const std::string& jobScript, const std::map<std::string, std::string>& env) override {
         // Add optional delay to job submissions to prevent issues in some cases.
-        if (submission_delay > std::chrono::milliseconds::zero()) {
-            std::lock_guard lock(submission_mutex);
-            std::this_thread::sleep_for(submission_delay);
+        if (submissionDelay > std::chrono::milliseconds::zero()) {
+            std::lock_guard lock(submissionMutex);
+            std::this_thread::sleep_for(submissionDelay);
         }
 
         // Submit job
-        std::vector<std::string> options = env_to_options(env);
-        Command command {"sbatch", options, job_script};
+        std::vector<std::string> options = envToOptions(env);
+        Command command {"sbatch", options, jobScript};
 
         // Makes SLURM output "<job id>[;<cluster name>]\n"
         command.addOption("--parsable");
-        command.addOption("--array=1-" + std::to_string(num_server));
-        std::string output = get_command_output(command.toString());
+        command.addOption("--array=1-" + std::to_string(numServer));
+        std::string output = getCommandOutput(command.toString());
 
-	    std::regex job_id_regex(R"(^(\d+)(?:;[a-zA-Z0-9_-]+)?$)");
+	    std::regex jobIDRegex(R"(^(\d+)(?:;[a-zA-Z0-9_-]+)?$)");
 	    std::istringstream stream(output);
       	std::string line;
 
-        std::string job_id;
+        std::string jobID;
         while (std::getline(stream, line)) {
             std::smatch match;
-            if (std::regex_match(line, match, job_id_regex)) {
-                job_id = match[1];
+            if (std::regex_match(line, match, jobIDRegex)) {
+                jobID = match[1];
             }
         }
-        remove_trailing_newline(job_id);
-        return job_id;
+        removeTrailingNewline(jobID);
+        return jobID;
     }
     
 private:
     // SLURM environment variables: --export=KEY1=VAL1,KEY2=VAL2,...
-    std::vector<std::string> env_to_options(const std::map<std::string, std::string>& env) const {
+    std::vector<std::string> envToOptions(const std::map<std::string, std::string>& env) const {
         // By default include all SLURM_* and SPANK option environment variables.
-        std::string env_option = "--export=ALL";
+        std::string envOption = "--export=ALL";
 
         for (const auto& [key, val] : env) {
-            env_option += "," + key + "=" + val;
+            envOption += "," + key + "=" + val;
         }
 
-        return {env_option};
+        return {envOption};
     }
     
-    std::chrono::milliseconds submission_delay = std::chrono::milliseconds::zero();
-    std::mutex submission_mutex;
+    std::chrono::milliseconds submissionDelay = std::chrono::milliseconds::zero();
+    std::mutex submissionMutex;
 };
 
 
@@ -210,131 +220,133 @@ public:
     JobCommunicator& operator=(JobCommunicator&& other) = delete;
     virtual ~JobCommunicator() = default;
 
-    virtual std::map<std::string, std::string> getInitMessage() = 0;
+    virtual std::map<std::string, std::string> getInitMessage() const = 0;
 
-    virtual std::string getModelUrl(const std::string& job_id) = 0;
+    virtual std::string getModelUrl(const std::string& jobID) = 0;
 };
 
 class JobCommunicatorFactory {
 public:
     virtual ~JobCommunicatorFactory() = default;
 
-    virtual std::unique_ptr<JobCommunicator> create() = 0;
+    virtual std::unique_ptr<JobCommunicator> create() const = 0;
 };
 
 class FilesystemCommunicator : public JobCommunicator {
 public:
-    FilesystemCommunicator(std::filesystem::path file_dir, std::chrono::milliseconds polling_cycle) 
-    : file_dir(std::move(file_dir)), polling_cycle(polling_cycle) {}
+    FilesystemCommunicator(std::filesystem::path fileDir, std::chrono::milliseconds pollingCycle) 
+    : fileDir(std::move(fileDir)), pollingCycle(pollingCycle) {}
 
     ~FilesystemCommunicator() override {
-        if(!file_path.empty()) {
-            std::filesystem::remove(file_path);
+        for (auto name: urlFilenames) {
+            std::string removableUrlFile = fileDir / name;
+            if(!removableUrlFile.empty()) {
+                std::filesystem::remove(removableUrlFile);
+            }
         }
-    }
-
+    } 
+        
     // Tell the job script which directory the URL file should be written to.
-    std::map<std::string, std::string> getInitMessage() override {
-        std::map<std::string, std::string> msg {{"UMBRIDGE_LOADBALANCER_COMM_FILEDIR", file_dir.string()}};
+    std::map<std::string, std::string> getInitMessage() const override {
+        std::map<std::string, std::string> msg {{"UMBRIDGE_LOADBALANCER_COMM_FILEDIR", fileDir.string()}};
         return msg;
     }
 
-    std::string getModelUrl(const std::string& job_id) override {
-        file_path = file_dir / getUrlFileName(job_id);
+    std::string getModelUrl(const std::string& jobID) override {
+        filePath = fileDir / getUrlFileName(jobID);
 
-        std::cout << "Waiting for URL file: " << file_path.string() << std::endl;
-        wait_for_file(file_path, polling_cycle);
+        std::cout << "Waiting for URL file: " << filePath.string() << std::endl;
+        waitForFile(filePath, pollingCycle);
 
         // TODO: What if opening the file fails?
-        std::string url = read_line_from_file(file_path);
+        std::string url = readLineFromFile(filePath);
         return url;
     }
     
-    // Potentially add a is_ready function to check if server is up
-    /*
-    bool is_ready() {
-        try to connect to model via url
-    }
-    */
-
 private:
-    // Currently, the naming of the URL file is hard-code.
+    // The naming of the URL file is hard-coded.
     // In the future, it might be better to have the communicator itself generate the filename and then send it to the job script.
-    std::string getUrlFileName(const std::string& job_id) const {
-        return "url-" + job_id + ".txt";
+    std::string getUrlFileName(const std::string& jobID) {
+        std::string urlFilename = "url-" + jobID + ".txt";
+        urlFilenames.push_back(urlFilename);
+        return urlFilename;
     }
 
-    std::filesystem::path file_dir;
-    std::filesystem::path file_path;
+    std::filesystem::path fileDir;
+    std::filesystem::path filePath;
+    
+    std::vector<std::string> urlFilenames;
 
-    std::chrono::milliseconds polling_cycle;
+    std::chrono::milliseconds pollingCycle;
 };
 
 class FilesystemCommunicatorFactory : public JobCommunicatorFactory {
 public:
-    FilesystemCommunicatorFactory(std::filesystem::path file_dir, std::chrono::milliseconds polling_cycle)
-    : file_dir(file_dir), polling_cycle(polling_cycle) {
-        std::filesystem::create_directory(file_dir);
+    FilesystemCommunicatorFactory(std::filesystem::path fileDir, std::chrono::milliseconds pollingCycle)
+    : fileDir(fileDir), pollingCycle(pollingCycle) {
+        std::filesystem::create_directory(fileDir);
     }
 
-    std::unique_ptr<JobCommunicator> create() override {
-        return std::make_unique<FilesystemCommunicator>(file_dir, polling_cycle);
+    std::unique_ptr<JobCommunicator> create() const override {
+        return std::make_unique<FilesystemCommunicator>(fileDir, pollingCycle);
     }
 
 private:
-    std::filesystem::path file_dir;
-    std::chrono::milliseconds polling_cycle;
+    std::filesystem::path fileDir;
+    std::chrono::milliseconds pollingCycle;
 };
 
 
 // A JobScriptLocator specifies where the job script for a particular model is located.
 struct JobScriptLocator {
-    std::filesystem::path selectJobScript(const std::string& model_name) {
-        std::filesystem::path script_default = script_dir / script_default_name;
-        std::filesystem::path script_model_specific = script_dir / (model_prefix + model_name + model_suffix);
+    std::filesystem::path selectJobScript(const std::string& modelName) {
+        std::filesystem::path scriptDefault = scriptDir / scriptDefaultName;
+        std::filesystem::path scriptModelSpecific = scriptDir / (modelPrefix + modelName + modelSuffix);
 
         // Use model specific job script if available, default otherwise.
-        if (std::filesystem::exists(script_model_specific)) {
-            return script_model_specific;
-        } else if (std::filesystem::exists(script_default)) {
-            return script_default;
-        } else {
-            std::string error_msg = "Job script not found: Check that file '" + script_default.string() + "' exists.\n";
-            throw std::runtime_error(error_msg);
+        if (std::filesystem::exists(scriptModelSpecific)) {
+            return scriptModelSpecific;
+        } 
+        else if (std::filesystem::exists(scriptDefault)) {
+            return scriptDefault;
+        } 
+        else {
+            std::string errorMsg = "Job script not found: Check that file '" + scriptDefault.string() + "' exists.\n";
+            throw std::runtime_error(errorMsg);
         }
     }
 
     std::filesystem::path getDefaultJobScript() {
-        return script_dir / script_default_name;
+        return scriptDir / scriptDefaultName;
     }
 
-    void printModelJobScripts(std::vector<std::string> model_names) {
-        const std::string section_start_delimiter = "==============================MODEL INFO==============================";
-        const std::string section_end_delimiter   = "======================================================================";
+    void printModelJobScripts(std::vector<std::string> modelNames) {
+        const std::string sectionStartDelimiter = "==============================MODEL INFO==============================";
+        const std::string sectionEndDelimiter   = "======================================================================";
         
         // Sort the model names in alphabetical order for cleaner output.
-        std::sort(model_names.begin(), model_names.end());
+        std::sort(modelNames.begin(), modelNames.end());
 
-        std::cout << section_start_delimiter << std::endl;
+        std::cout << sectionStartDelimiter << std::endl;
 
         std::cout << "Available models and corresponding job-scripts:\n";
-        for (const std::string& model_name : model_names) {
-            std::filesystem::path used_job_script = selectJobScript(model_name);
-            std::cout << "* Model '" << model_name << "' --> '" << used_job_script.string() << "'" << std::endl;
+        for (const std::string& modelName : modelNames) {
+            std::filesystem::path usedJobScript = selectJobScript(modelName);
+            std::cout << "* Model '" << modelName << "' --> '" << usedJobScript.string() << "'" << std::endl;
         }
         std::cout << std::endl;
 
-        std::cout << section_end_delimiter << std::endl;
+        std::cout << sectionEndDelimiter << std::endl;
     }
 
 
-    std::filesystem::path script_dir;
+    std::filesystem::path scriptDir;
 
-    std::string script_default_name;
+    std::string scriptDefaultName;
 
-    // Model-specific job-script format: <prefix><model_name><suffix>
-    std::string model_prefix;
-    std::string model_suffix;
+    // Model-specific job-script format: <prefix><modelName><suffix>
+    std::string modelPrefix;
+    std::string modelSuffix;
 };
 
 
@@ -342,41 +354,50 @@ struct JobScriptLocator {
 class JobManager {
 public:
     virtual ~JobManager() = default;
+    
+    virtual void spawnServers() = 0;
 
     // Grant exclusive ownership of a model (with a given name) to a caller.
-    virtual std::shared_ptr<umbridge::Model> requestModelAccess(const std::string& model_name) = 0;
+    virtual std::shared_ptr<umbridge::Model> requestModelAccess(const std::string& modelName) = 0;
+    
+    // Enables load balancer to run even when not all allocations are ready + initiate regular
+    // healthchecks.
+    virtual void startUpRoutine() = 0;
 
     // To initialize the load balancer we first need a list of model names that are available on a server.
     // Typically, this can be achieved by simply running the model code and requesting the model names from the server.
     // Therefore, the implementation can most likely use the same mechanism that is also used for granting model access.
-    virtual std::vector<std::string> getModelName(std::string url) = 0;
+    virtual std::vector<std::string> getModelName(std::string url) const = 0;
     
-    virtual std::set<std::string> getModelNameArray() = 0;
+    virtual std::set<std::string> getModelNameArray() const = 0;
 };
 
 
-// TODO: Ugly repetition, maybe there is a better way to wrap a job and a model?
+// JobModel represents a single named model within an HPC job allocation.
+// Multiple JobModel instances can share the same Job (via shared_ptr) when a single
+// allocation hosts several named models. Busyness is tracked at the Job level so that
+// the entire allocation is considered busy regardless of which named model is running.
 class JobModel : public umbridge::Model {
 public:
-    JobModel(std::unique_ptr<Job> job, std::unique_ptr<umbridge::Model> model)
+    JobModel(std::shared_ptr<Job> job, std::unique_ptr<umbridge::Model> model)
     : umbridge::Model(model->GetName()), job(std::move(job)), model(std::move(model)) {}
 
     std::vector<std::size_t> GetInputSizes(const json &config_json = json::parse("{}")) const override {
-        auto inputsizes = model->GetInputSizes(config_json);
-        job->set_busyness(false);
-        return inputsizes;
+        auto inputSizes = model->GetInputSizes(config_json);
+        job->setBusyness(false);
+        return inputSizes;
     }
 
     std::vector<std::size_t> GetOutputSizes(const json &config_json = json::parse("{}")) const override {
-        auto outputsizes = model->GetOutputSizes(config_json);
-        job->set_busyness(false);
-        return outputsizes;
+        auto outputSizes = model->GetOutputSizes(config_json);
+        job->setBusyness(false);
+        return outputSizes;
     }
 
-    std::vector<std::vector<double>> Evaluate(const std::vector<std::vector<double>> &inputs, 
+    std::vector<std::vector<double>> Evaluate(const std::vector<std::vector<double>> &inputs,
                                               json config_json = json::parse("{}")) override {
         auto output = model->Evaluate(inputs, config_json);
-        job->set_busyness(false);
+        job->setBusyness(false);
         return output;
     }
 
@@ -386,7 +407,7 @@ public:
                                  const std::vector<double> &sens,
                                  json config_json = json::parse("{}")) override {
         auto gradient = model->Gradient(outWrt, inWrt, inputs, sens, config_json);
-        job->set_busyness(false);
+        job->setBusyness(false);
         return gradient;
     }
 
@@ -395,9 +416,9 @@ public:
                                       const std::vector<std::vector<double>> &inputs,
                                       const std::vector<double> &vec,
                                       json config_json = json::parse("{}")) override {
-        auto apply_jacobian = model->ApplyJacobian(outWrt, inWrt, inputs, vec, config_json);
-        job->set_busyness(false);
-        return apply_jacobian; 
+        auto applyJacobian = model->ApplyJacobian(outWrt, inWrt, inputs, vec, config_json);
+        job->setBusyness(false);
+        return applyJacobian;
     }
 
     std::vector<double> ApplyHessian(unsigned int outWrt,
@@ -407,49 +428,61 @@ public:
                                      const std::vector<double> &sens,
                                      const std::vector<double> &vec,
                                      json config_json = json::parse("{}")) override {
-        auto apply_hessian = model->ApplyHessian(outWrt, inWrt1, inWrt2, inputs, sens, vec, config_json);
-        job->set_busyness(false);
-        return apply_hessian;
+        auto applyHessian = model->ApplyHessian(outWrt, inWrt1, inWrt2, inputs, sens, vec, config_json);
+        job->setBusyness(false);
+        return applyHessian;
     }
 
     bool SupportsEvaluate() override {
-        auto supports_evaluate = model->SupportsEvaluate();
-        job->set_busyness(false);
-        return supports_evaluate;
+        auto supportsEvaluate = model->SupportsEvaluate();
+        job->setBusyness(false);
+        return supportsEvaluate;
     }
     bool SupportsGradient() override {
-        auto supports_gradient = model->SupportsGradient();
-        job->set_busyness(false);
-        return supports_gradient;
+        auto supportsGradient = model->SupportsGradient();
+        job->setBusyness(false);
+        return supportsGradient;
     }
     bool SupportsApplyJacobian() override {
-        auto supports_jacobian = model->SupportsApplyJacobian();
-        job->set_busyness(false);
-        return supports_jacobian;
+        auto supportsJacobian = model->SupportsApplyJacobian();
+        job->setBusyness(false);
+        return supportsJacobian;
     }
     bool SupportsApplyHessian() override {
-        auto supports_hessian = model->SupportsApplyHessian();
-        job->set_busyness(false);
-        return supports_hessian;
+        auto supportsHessian = model->SupportsApplyHessian();
+        job->setBusyness(false);
+        return supportsHessian;
     }
-    
-    bool job_status() {
-        try {
-            GetInputSizes(json::parse("{}"));
+
+    // Probes whether this named model is still responding.
+    // Has to create a new client to connect to the UM-Bridge server because the same HTTP model pointer
+    // would contest with the ongoing request and be blocked until the current request finishes.
+    bool checkJobModelLiveness(std::string url, std::string modelName) const {
+        httplib::Client client{url.c_str()};
+        httplib::Headers headers{httplib::Headers()};
+        
+        json request_body;
+        request_body["name"] = modelName;
+        
+        if (auto res = client.Post("/InputSizes", headers, request_body.dump(), "application/json")) {
+            return true;
         }
-        catch (std::exception& e) {
-            std::cout << "Model server is no longer running" << std::endl;
+        else {
+            std::cout << "Named model '" << GetName() << "' in allocation " << job->getJobId() << " is no longer running." << std::endl;
             return false;
         }
-        return true;
+    }
+
+    bool checkJobBusyness() const {
+        return job->getBusyness();
     }
     
-    Job* getjob() {
-        return job.get();
+    void setJobBusyness(bool busyness) {
+        job->setBusyness(busyness);
     }
 
 private:
-    std::unique_ptr<Job> job;
+    std::shared_ptr<Job> job;
     std::unique_ptr<umbridge::Model> model;
 };
 
@@ -461,80 +494,161 @@ private:
 class CommandJobManager : public JobManager {
 public:
     CommandJobManager(
-        std::unique_ptr<JobSubmitter> job_submitter, 
-        std::unique_ptr<JobCommunicatorFactory> job_comm_factory,
+        std::unique_ptr<JobSubmitter> jobSubmitter, 
+        std::unique_ptr<JobCommunicatorFactory> jobCommFactory,
         JobScriptLocator locator,
-        int num_server) 
-        : job_submitter(std::move(job_submitter)), job_comm_factory(std::move(job_comm_factory)), locator(std::move(locator)), num_server(num_server) {
-            // Submit slurm jobs to start model server
-            spawn_servers();
-        }
-        // create spawn servers function to use in constructor and restarts
-        // adapt to use job arrays
+        int numServer,
+        int idleTimeout) 
+        : jobSubmitter(std::move(jobSubmitter)), jobCommFactory(std::move(jobCommFactory)), locator(std::move(locator)), numServer(numServer), idleTimeout(idleTimeout) {}
 
-    std::shared_ptr<umbridge::Model> requestModelAccess(const std::string& model_name) override {
-        // Sould select an available model from the vector and return 
-        // Suggestion: make a request class that destructs and mark busyness. Maybe a bad idea (many temps)
-        // Mutex here for first come first serve
-        // Problem: deadlock here when more threads than available servers
-        // Cause: Running model crashes but leaves extra thread(s) dangling
-        // Solution: Kill all threads when crashes / Mark all threads as completed
-        // even better: refactor code to account for crashed/terminated servers
-        std::scoped_lock server_lock{server_mutex};
-        int iter = 0;
-        while (true) {
-            if (server_array.size() == 0) {
-                std::cout << "No available servers running." << std::endl; // Need to make it exit properly
-                return nullptr;
+    std::shared_ptr<umbridge::Model> requestModelAccess(const std::string& modelName) override {
+        std::unique_lock lock{serverMutex};
+
+        requestQueue.push(std::this_thread::get_id());
+
+        serverCV.wait(lock, [&] {
+            return requestQueue.front() == std::this_thread::get_id() &&
+                   hasAvailableServer(modelName);
+        });
+        requestQueue.pop();
+
+        // Find the first free and alive JobModel for the requested name and mark it busy.
+        auto range = serverArray.equal_range(modelName);
+        for (auto it = range.first; it != range.second; ++it) {
+            auto& [jobModel, url] = it->second;
+            if (!jobModel->checkJobBusyness()) {
+                jobModel->setJobBusyness(true);
+                return jobModel;
             }
-            for (auto& tmp : server_array) { // to solve; server_array may contain duplicate slurm allocation when multiple model names are present in one server
-                auto& server = tmp.first;
-                if (!server->getjob()->get_busyness()) {
-                    server->getjob()->set_busyness(true);
-                    return server;
-                }
-                if (iter == 50) {
-                    bool server_status = server->job_status();
-                    if (tmp.second != server_status) {
-                        server_array.erase(tmp.first);
-                    }
-                }
-            }
-            iter = (iter == 50) ? 0: iter + 1; // To prevent overflow for long runs
-            std::this_thread::sleep_for(std::chrono::milliseconds{100});
-        }    
+        }
+        return nullptr; // To remove compiler warning
     }
 
-    void spawn_servers() {
-        std::filesystem::path job_script = locator.getDefaultJobScript();
-        std::unique_ptr<JobCommunicator> comm = job_comm_factory->create();
-        std::string job_id = job_submitter->submit(num_server, job_script, comm->getInitMessage());
-        for (int i = 1; i <= num_server; i++) {
-            std::string job_array_id = job_id + "_" + std::to_string(i);
-            std::string url = comm->getModelUrl(job_array_id);
-            auto model_name = getModelName(url);
-            model_names.insert(model_name[0]); // Problem: May have multiple names in one server
-            auto model = std::make_unique<umbridge::HTTPModel>(url, model_name[0]);
-            std::unique_ptr<Job> job = std::make_unique<SlurmJob>(job_array_id);
-            server_array.insert({std::make_shared<JobModel>(std::move(job), std::move(model)), true});
-        }
-    }
+    void spawnServers() override {
+        std::filesystem::path jobScript = locator.getDefaultJobScript();
+        std::unique_ptr<JobCommunicator> comm = jobCommFactory->create();
+        std::string jobID = jobSubmitter->submit(numServer, jobScript, comm->getInitMessage());
+        for (int i = 1; i <= numServer; i++) {
+            std::string jobArrayID = jobID + "_" + std::to_string(i);
+            std::string url = comm->getModelUrl(jobArrayID);
+            auto names = getModelName(url);
 
-    std::vector<std::string> getModelName(std::string url) override {
-        return umbridge::SupportedModels(url);
+            // All named models in the same allocation share one SlurmJob instance.
+            auto job = std::make_shared<SlurmJob>(jobArrayID);
+            job->setFreeNotifier([this] () { this->serverCV.notify_all(); });
+
+            {
+                std::unique_lock lock{serverMutex};
+                for (const auto& name : names) {
+                    modelNames.insert(name);
+                    auto model = std::make_unique<umbridge::HTTPModel>(url, name);
+                    auto jobModel = std::make_shared<JobModel>(job, std::move(model));
+                    serverArray.emplace(name, std::make_pair(jobModel, url));
+                }
+            }
+            
+            serverCV.notify_all();
+        }
     }
     
-    std::set<std::string> getModelNameArray() override {
-        return model_names;
+    void startUpRoutine() override {
+        waitForFirstServer();
+        initiateHealthCheck();
     }
+    
+    std::vector<std::string> getModelName(std::string url) const override {
+        return umbridge::SupportedModels(url);
+    }
+
+    std::set<std::string> getModelNameArray() const override {
+        return modelNames;
+    }
+    
+    ~CommandJobManager() {
+        stopHealthCheck = true;
+        healthCheckThread.join();
+    }
+
 private:
-    std::mutex server_mutex;
-    std::unique_ptr<JobSubmitter> job_submitter;
-    std::unique_ptr<JobCommunicatorFactory> job_comm_factory;
+    // Probes liveness of every JobModel.
+    // Dead entries are erased immediately. When the last JobModel sharing a Job is
+    // erased, the shared_ptr refcount drops to zero and SlurmJob's destructor fires,
+    // cancelling the allocation automatically. Ideally this only happens when time runs out.
+    // Unable to handle server crashes yet.
+    // Must be called with serverMutex held.
+    // The for loop can be rewritten using std::erase_if.
+    void checkServerArrayLiveness() {
+        std::unique_lock lock{serverMutex};
+        for (auto it = serverArray.begin(); it != serverArray.end();) {
+            auto& [jobModel, url] = it->second;
+            
+            bool alive = jobModel->checkJobModelLiveness(url, it->first);
+            
+            if (alive) {
+                ++it;
+            }
+            else {
+                it = serverArray.erase(it);
+            }
+        }
+        serverCV.notify_all();
+    }
+
+    // Returns true if at least one JobModel for the requested name is free and alive.
+    // Must be called with serverMutex held.
+    bool hasAvailableServer(const std::string& modelName) const {
+        auto range = serverArray.equal_range(modelName);
+        for (auto it = range.first; it != range.second; ++it) {
+            const auto& [jobModel, url] = it->second; // Retrieve tuple from std::pair
+            if (!jobModel->checkJobBusyness()) return true;
+        }
+        return false;
+    }
+    
+    void initiateHealthCheck() {
+        healthCheckThread = std::thread([this] () {
+            while (!stopHealthCheck) {
+                std::this_thread::sleep_for(healthCheckInterval);
+                
+                checkServerArrayLiveness();
+
+                if (serverArray.empty()) {
+                    throw std::runtime_error("No alive UM-Bridge servers");
+                }
+                // TODO: If the queue has been empty for longer than the idle timeout
+                // and there are no busy servers. End SLURM allocation and LB
+                /*
+                if idleTimeout > 0{
+                    if (idleConditions) {
+                        // handle the idling here
+                    }
+                }
+                */
+                serverCV.notify_all();
+            }
+        });
+    }
+    
+    void waitForFirstServer() {
+        std::unique_lock lock{serverMutex};
+        serverCV.wait(lock, [this] () { return !serverArray.empty(); });
+    }
+
+    std::mutex serverMutex;
+    std::condition_variable serverCV;
+    std::thread healthCheckThread;
+    std::queue<std::thread::id> requestQueue;
+    std::unique_ptr<JobSubmitter> jobSubmitter;
+    std::unique_ptr<JobCommunicatorFactory> jobCommFactory;
     JobScriptLocator locator;
-    int num_server;
-    std::map<std::shared_ptr<JobModel>, bool> server_array;
-    std::set<std::string> model_names;
+    int idleTimeout;
+    int numServer;
+    bool stopHealthCheck = false;
+    std::chrono::seconds healthCheckInterval{900}; // Health check every 15 minutes
+    // Keyed by model name; multiple entries per name when multiple allocations serve it.
+    // Value: (JobModel, url). JobModels sharing the same allocation share a Job via shared_ptr.
+    std::multimap<std::string, std::pair<std::shared_ptr<JobModel>, std::string>> serverArray;
+    std::set<std::string> modelNames;
 };
 
 
@@ -542,22 +656,22 @@ private:
 // redirected to models running in a job allocation of an HPC system.
 class LoadBalancer : public umbridge::Model {
 public:
-    LoadBalancer(std::string name, std::shared_ptr<JobManager> job_manager) 
-    : umbridge::Model(name), job_manager(job_manager) {}
+    LoadBalancer(std::string name, std::shared_ptr<JobManager> jobManager) 
+    : umbridge::Model(name), jobManager(jobManager) {}
 
     std::vector<std::size_t> GetInputSizes(const json &config_json = json::parse("{}")) const override {
-        auto model = job_manager->requestModelAccess(name);
+        auto model = jobManager->requestModelAccess(name);
         return model->GetInputSizes(config_json);
     }
 
     std::vector<std::size_t> GetOutputSizes(const json &config_json = json::parse("{}")) const override {
-        auto model = job_manager->requestModelAccess(name);
+        auto model = jobManager->requestModelAccess(name);
         return model->GetOutputSizes(config_json);
     }
 
     std::vector<std::vector<double>> Evaluate(const std::vector<std::vector<double>> &inputs, 
                                               json config_json = json::parse("{}")) override {
-        auto model = job_manager->requestModelAccess(name);
+        auto model = jobManager->requestModelAccess(name);
         return model->Evaluate(inputs, config_json);
     }
 
@@ -566,7 +680,7 @@ public:
                                  const std::vector<std::vector<double>> &inputs,
                                  const std::vector<double> &sens,
                                  json config_json = json::parse("{}")) override {
-        auto model = job_manager->requestModelAccess(name);
+        auto model = jobManager->requestModelAccess(name);
         return model->Gradient(outWrt, inWrt, inputs, sens, config_json);
     }
 
@@ -575,7 +689,7 @@ public:
                                       const std::vector<std::vector<double>> &inputs,
                                       const std::vector<double> &vec,
                                       json config_json = json::parse("{}")) override {
-        auto model = job_manager->requestModelAccess(name);
+        auto model = jobManager->requestModelAccess(name);
         return model->ApplyJacobian(outWrt, inWrt, inputs, vec, config_json);
     }
 
@@ -586,27 +700,27 @@ public:
                                      const std::vector<double> &sens,
                                      const std::vector<double> &vec,
                                      json config_json = json::parse("{}")) override {
-        auto model = job_manager->requestModelAccess(name);
+        auto model = jobManager->requestModelAccess(name);
         return model->ApplyHessian(outWrt, inWrt1, inWrt2, inputs, sens, vec, config_json);
     }
 
     bool SupportsEvaluate() override {
-        auto model = job_manager->requestModelAccess(name);
+        auto model = jobManager->requestModelAccess(name);
         return model->SupportsEvaluate();
     }
     bool SupportsGradient() override {
-        auto model = job_manager->requestModelAccess(name);
+        auto model = jobManager->requestModelAccess(name);
         return model->SupportsGradient();
     }
     bool SupportsApplyJacobian() override {
-        auto model = job_manager->requestModelAccess(name);
+        auto model = jobManager->requestModelAccess(name);
         return model->SupportsApplyJacobian();
     }
     bool SupportsApplyHessian() override {
-        auto model = job_manager->requestModelAccess(name);
+        auto model = jobManager->requestModelAccess(name);
         return model->SupportsApplyHessian();
     }
 
 private:
-    std::shared_ptr<JobManager> job_manager;
+    std::shared_ptr<JobManager> jobManager;
 };

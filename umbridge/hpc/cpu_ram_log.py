@@ -49,7 +49,7 @@ try:
                     if process_info["name"] == "sleep":
                         continue
                     # if process occupies more than 50 MB it is like not a background process. only look at these.
-                    if process_info["username"] == args.username and proc.memory_info()[0] > 10e+2:
+                    if process_info["username"] == args.username and proc.memory_info()[0] > 1e3:
                         memory.append(proc.memory_info()[0])
                         cpu_usage.append(proc.cpu_percent(0.2))
                 except:
