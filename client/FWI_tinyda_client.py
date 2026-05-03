@@ -8,7 +8,10 @@ import pandas as pd
 import tinyDA as tda
 import umbridge
 import torch
-from GP.weighted_gp import WeightedGP
+import sys
+# caution: path[0] is reserved for script path (or '' in REPL)
+sys.path.insert(1, '/home/ming/ExaHyPE2_UQ/GP/')
+from weighted_gp import WeightedGP
 
 np.random.seed(111)
 
@@ -127,8 +130,8 @@ my_model2 = tda.UmBridgeModel(umbridge_model, umbridge_config={"level": 2})
 my_prior = uniform_2D(-200000, -200000, 400000, 400000)
 
 # Read the Probe Data
-probe18 = pd.read_csv("probes/21418_march.csv", header=None)
-probe19 = pd.read_csv("probes/21419_march.csv", header=None)
+probe18 = pd.read_csv("../probes/21418_march.csv", header=None)
+probe19 = pd.read_csv("../probes/21419_march.csv", header=None)
 
 probe18 = processBuoyData(probe18)
 probe19 = processBuoyData(probe19)
@@ -195,7 +198,7 @@ my_chains = tda.sample(my_posteriors, my_proposal, iterations=iterations, n_chai
 import arviz as az
 import pickle
 
-with open("FWI_tinyda.pkl", "wb") as f:
+with open("../tinyda_results/FWI_tinyda.pkl", "wb") as f:
     pickle.dump(my_chains, f)
 
 # convert the tinyDA chains to an ArViz InferenceData object.

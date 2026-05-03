@@ -4,9 +4,12 @@ import json
 import numpy as np
 import pandas as pd
 import torch
-from GP.weighted_gp import WeightedGP
 import datetime
 import csv
+import sys
+# caution: path[0] is reserved for script path (or '' in REPL)
+sys.path.insert(1, '/home/ming/ExaHyPE2_UQ/GP/')
+from weighted_gp import WeightedGP
 
 def processExahype2Data(num):
     num["ssha"] = pd.to_numeric(num["data(0)"] + num["data(3)"])

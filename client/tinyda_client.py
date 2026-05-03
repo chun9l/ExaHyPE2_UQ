@@ -98,7 +98,7 @@ my_chains = tda.sample(my_posteriors, my_proposal, subchain_length=[500, 20], it
 import arviz as az
 import pickle 
 
-with open("tinyda.pkl", "wb") as f:
+with open("../tinyda_results/tinyda.pkl", "wb") as f:
     pickle.dump(my_chains, f)
 
 # convert the tinyDA chains to an ArViz InferenceData object.
