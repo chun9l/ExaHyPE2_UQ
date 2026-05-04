@@ -96,7 +96,3 @@ idata = tda.to_inference_data(data, burnin=1000, level="0")
 
 plotProbe(buoy18, samples=idata, buoy_name="21418")
 plotProbe(buoy19, samples=idata, buoy_name="21419")
-
-
-
-# %%

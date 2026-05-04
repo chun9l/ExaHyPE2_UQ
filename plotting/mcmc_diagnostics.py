@@ -3,7 +3,7 @@ import arviz as az
 import pickle 
 import matplotlib.pyplot as plt
 
-pkl_path = "tinyda_results/FWI_tinyda.pkl"
+pkl_path = "../results/FWI_tinyda.pkl"
 
 with open(pkl_path, "rb") as f:
     data = pickle.load(f)

@@ -132,15 +132,14 @@ def plot_dependency_arrows(
     arrow_level_set=None, 
     bar_height=0.6,
     min_gap=0.0,
+    skip_arrows=1,
 ):
     """
     Plots the arrows that indicate evaluation dependency
     on the bar chart.
     """
-    
-    arrow_count = 0
  
-    for edge in edges:
+    for edge in edges[::skip_arrows]: 
         if edge["chain_id"] not in arrow_chain_set:
             continue
 
@@ -190,7 +189,6 @@ def plot_dependency_arrows(
                     connectionstyle=f"arc3,rad={rad}",
                 ),
             )
-        arrow_count += 1
 
 
 
@@ -204,6 +202,7 @@ def plot(
     title="Process Uptime by Node",
     bar_height=0.6,
     figsize=None,
+    show_legend=True,
     show=False,
     save_path=None,
 ):
@@ -248,7 +247,7 @@ def plot(
             chain_id: chain_cmap(i % chain_cmap.N)
             for i, chain_id in enumerate(all_chains)
         }
-        plot_dependency_arrows(ax, edges, chain_color_map, arrow_chain_set, arrow_level_set, bar_height=bar_height, min_gap=0.0)
+        plot_dependency_arrows(ax, edges, chain_color_map, arrow_chain_set, arrow_level_set, bar_height=bar_height, min_gap=0.0, skip_arrows=1000)
 
 
     node_labels = list(node_data["slurm_id"].unique())
@@ -290,13 +289,13 @@ def plot(
 
         handles += chain_patches
 
-
-    ax.legend(
-        handles=handles,
-        loc="upper right",
-        fontsize=8,
-        framealpha=0.65,
-    )
+    if show_legend:
+        ax.legend(
+            handles=handles,
+            loc="upper right",
+            fontsize=8,
+            framealpha=0.65,
+        )
         
     if save_path:
         fig.savefig(save_path, dpi=150, bbox_inches="tight")
@@ -309,13 +308,15 @@ def plot(
 
 # Modify to suit your needs
 if __name__ == "__main__":
-    file_path = "/nobackup/mghw54/Peano/applications/shallow-water/tohoku-tsunami/"
-    slurm_job_id = "16917820"
-    log_files = {f"{slurm_job_id}_{i}": f"{file_path + slurm_job_id}_{i}/active_time.log" for i in range(1, 4)}
+    slurm_job_id = "10956759"
+    file_path = "../results/" +  slurm_job_id + os.sep
+    log_files = {f"{slurm_job_id}_{i}": f"{file_path + slurm_job_id}_{i}/active_time.log" for i in range(1, 6)}
     plot(
         log_files,
         show_dep            = True,
-        arrow_chains        = [0],
+        arrow_chains        = [2],
         title               = "Process Uptime",
-        save_path           = f"uptime_{slurm_job_id}.png",
+        # show                = True,
+        show_legend         = False,
+        save_path           = f"uptime_{slurm_job_id}.pdf",
     )
