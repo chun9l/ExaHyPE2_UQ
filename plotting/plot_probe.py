@@ -45,7 +45,7 @@ def plotProbe(buoy, samples=None, buoy_name=None):
     fig_width = 10.0
     fig_height = fig_width * (np.sqrt(2)-1.0)/2.0
     figsize = (fig_width, fig_height)
-    fig, ax = plt.subplots(figsize=figsize)
+    fig, ax = plt.subplots(figsize=figsize, layout="constrained")
     
     x_buoy = buoy['t'] / 60.0
     y_buoy = buoy['ssha']
@@ -72,7 +72,6 @@ def plotProbe(buoy, samples=None, buoy_name=None):
         handles += [mlines.Line2D([], [], color='k', linestyle='-',label='l0 samples')]
     
     ax.legend(handles=handles)
-    fig.tight_layout()
     
     fig.subplots_adjust(bottom=0.25)
     fig.subplots_adjust(left=0.05)
@@ -80,7 +79,7 @@ def plotProbe(buoy, samples=None, buoy_name=None):
     ax.set_xlabel("Time [min]")
     ax.set_ylabel("ssha [m]")  
     
-    plt.show()
+    plt.savefig(f"probe{buoy_name}-draws.pdf")
     return fig,ax
 
 buoy18 = pd.read_csv("../probes/21418_march.csv", header=None)
@@ -89,7 +88,7 @@ buoy19 = pd.read_csv("../probes/21419_march.csv", header=None)
 buoy18 = processBuoyData(buoy18, None)
 buoy19 = processBuoyData(buoy19, None)
 
-with open("../tinyda_results/tinyda.pkl", "rb") as f:
+with open("../results/tinyda.pkl", "rb") as f:
     data = pickle.load(f)
 
 idata = tda.to_inference_data(data, burnin=1000, level="0")
