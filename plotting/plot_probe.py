@@ -53,16 +53,14 @@ def plotProbe(buoy, samples=None, buoy_name=None):
     ax.plot(x_buoy,y_buoy,linewidth=2, markersize=5,marker="x",color='r')
     handles = [mlines.Line2D([], [], color='r', linestyle='-',label="Buoy {}".format(buoy_name))]
 
-    if samples != None:
-        combined = az.extract_dataset(samples.posterior, num_samples=50)
-        posterior_df = xarray.Dataset.to_pandas(combined)
+    if samples is not None:
         x_gp = time / 60.0
         if buoy_name == "21418":
             GP = Series18
         elif buoy_name == "21419":
             GP = Series19
         
-        for index, row in posterior_df.iterrows():
+        for index, row in samples.iterrows():
             x = row["x0"]
             y = row["x1"]
             series = np.hstack([np.repeat([[x, y]], 100, axis=0), time.reshape(-1, 1)]) 
@@ -92,6 +90,10 @@ with open("../results/tinyda.pkl", "rb") as f:
     data = pickle.load(f)
 
 idata = tda.to_inference_data(data, burnin=1000, level="0")
+combined = az.extract_dataset(idata.posterior, num_samples=50)
+posterior_df = xarray.Dataset.to_pandas(combined)
 
-plotProbe(buoy18, samples=idata, buoy_name="21418")
-plotProbe(buoy19, samples=idata, buoy_name="21419")
+prior_df = pd.DataFrame(data={"x0": np.random.uniform(-2e5, 2e5, 50), "x1": np.random.uniform(-2e5, 2e5, 50)})
+
+plotProbe(buoy18, samples=prior_df, buoy_name="21418")
+plotProbe(buoy19, samples=prior_df, buoy_name="21419")
