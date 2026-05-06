@@ -4,6 +4,7 @@ from datetime import datetime
 import os
 from datetime import timedelta
 import pandas as pd
+from mpl_toolkits.axes_grid1.inset_locator import mark_inset, zoomed_inset_axes
 
 DATETIME_FMT = "%H:%M:%S.%f %d/%m/%Y"
 
@@ -201,7 +202,6 @@ def plot(
     arrow_levels=None,
     title="Process Uptime by Node",
     bar_height=0.6,
-    figsize=None,
     show_legend=True,
     show=False,
     save_path=None,
@@ -221,7 +221,7 @@ def plot(
         for i, level in enumerate(all_levels)
     }
 
-    fig, ax = plt.subplots(figsize=figsize, constrained_layout=True)
+    fig, ax = plt.subplots(constrained_layout=True)
 
     # Plot bar 
     plot_barh(ax, node_data, level_color_map, bar_height=bar_height)
@@ -252,7 +252,7 @@ def plot(
 
     node_labels = list(node_data["slurm_id"].unique())
     ax.set_yticks(range(len(node_labels)))
-    ax.set_yticklabels(node_labels)
+    ax.set_yticklabels([f"Task {i}" for i in range(len(node_labels))])
     ax.set_ylim(-0.5, len(node_labels) - 0.5)
     ax.invert_yaxis()
 
@@ -288,7 +288,35 @@ def plot(
         ]
 
         handles += chain_patches
+        
+    axins = zoomed_inset_axes(
+    ax,
+    zoom=2,
+    loc='upper right',
+    bbox_to_anchor=(1.1, 1.0),  # just outside the right edge
+    bbox_transform=ax.transAxes,
+    borderpad=0
+    )
+    
+    # subregion of the original image. Hardcoded
+    x1, x2, y1, y2 = 3000, 3200, -0.3, 0.3
+    axins.set_xlim(x1, x2)
+    axins.set_ylim(y1, y2)
+    
+    # Plot bars again in zoomed axis. Wasteful but quick
+    plot_barh(axins, node_data, level_color_map, bar_height=bar_height)
 
+    # draw a bbox of the region of the inset Axes in the parent Axes and
+    # connecting lines between the bbox and the inset Axes area
+    mark_inset(ax, axins, loc1=2, loc2=3, fc="none", ec="black", lw=0.5)
+    
+    axins.yaxis.get_major_locator().set_params(nbins=1)
+    axins.xaxis.get_major_locator().set_params(nbins=1)
+    axins.tick_params(labelleft=False, labelbottom=True)
+    
+    fig.get_layout_engine().set(rect=(0, 0, 0.9, 1))
+
+    
     if show_legend:
         ax.legend(
             handles=handles,
