@@ -326,7 +326,7 @@ def plot(
         )
         
     if save_path:
-        fig.savefig(save_path, dpi=150, bbox_inches="tight")
+        fig.savefig(save_path, dpi=600, bbox_inches="tight")
 
     if show:
         plt.show()
@@ -346,5 +346,5 @@ if __name__ == "__main__":
         title               = "Process Uptime",
         # show                = True,
         show_legend         = False,
-        save_path           = f"uptime_{slurm_job_id}.pdf",
+        save_path           = f"uptime_{slurm_job_id}.png",
     )
