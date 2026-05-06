@@ -3,18 +3,8 @@ import torch.optim as optim
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 
-# Detect device
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print(f"Using device: {device}")
-
 # Use double precision for stability
 torch.set_default_dtype(torch.float64)
-
-# random seeds
-np.random.seed(7)
-torch.manual_seed(5)
-if device.type == 'cuda':
-    torch.cuda.manual_seed_all(5)
 
 class WeightedGP:
     """
