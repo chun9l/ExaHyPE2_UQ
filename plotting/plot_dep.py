@@ -257,7 +257,7 @@ def plot(
     ax.invert_yaxis()
 
     ax.set_xlabel(
-        f"Elapsed time (minutes)\n[reference: {ref_dt.strftime(DATETIME_FMT)}]"
+        f"Elapsed time [minutes]\n[reference: {ref_dt.strftime(DATETIME_FMT)}]"
     )
     ax.set_title(title)
     ax.grid(axis="x", linestyle="--", alpha=0.4)
@@ -292,14 +292,14 @@ def plot(
     axins = zoomed_inset_axes(
     ax,
     zoom=2,
-    loc='upper right',
-    bbox_to_anchor=(1.1, 1.0),  # just outside the right edge
+    loc='lower right',
+    bbox_to_anchor=(1.1, 0.0),  # just outside the right edge
     bbox_transform=ax.transAxes,
     borderpad=0
     )
     
     # subregion of the original image. Hardcoded
-    x1, x2, y1, y2 = 3000, 3200, -0.3, 0.3
+    x1, x2, y1, y2 = 3000, 3150, 3.7, 4.3
     axins.set_xlim(x1, x2)
     axins.set_ylim(y1, y2)
     
@@ -309,10 +309,8 @@ def plot(
     # draw a bbox of the region of the inset Axes in the parent Axes and
     # connecting lines between the bbox and the inset Axes area
     mark_inset(ax, axins, loc1=2, loc2=3, fc="none", ec="black", lw=0.5)
-    
-    axins.yaxis.get_major_locator().set_params(nbins=1)
-    axins.xaxis.get_major_locator().set_params(nbins=1)
-    axins.tick_params(labelleft=False, labelbottom=True)
+    axins.yaxis.set_visible(False)
+    axins.tick_params(axis='x', rotation=45, labelsize=6)
     
     fig.get_layout_engine().set(rect=(0, 0, 0.9, 1))
 
