@@ -75,9 +75,9 @@ def plotProbe(buoy, samples=None, buoy_name=None):
     fig.subplots_adjust(left=0.05)
 
     ax.set_xlabel("Time [min]")
-    ax.set_ylabel("ssha [m]")  
+    ax.set_ylabel("SSHA [m]")  
     
-    plt.savefig(f"probe{buoy_name}-draws.pdf")
+    plt.savefig(f"probe{buoy_name}-draws.svg")
     return fig,ax
 
 buoy18 = pd.read_csv("../probes/21418_march.csv", header=None)
@@ -95,5 +95,5 @@ posterior_df = xarray.Dataset.to_pandas(combined)
 
 prior_df = pd.DataFrame(data={"x0": np.random.uniform(-2e5, 2e5, 50), "x1": np.random.uniform(-2e5, 2e5, 50)})
 
-plotProbe(buoy18, samples=prior_df, buoy_name="21418")
-plotProbe(buoy19, samples=prior_df, buoy_name="21419")
+plotProbe(buoy18, samples=posterior_df, buoy_name="21418")
+plotProbe(buoy19, samples=posterior_df, buoy_name="21419")
