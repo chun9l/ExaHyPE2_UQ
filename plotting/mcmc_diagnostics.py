@@ -20,3 +20,4 @@ for i in levels:
     print(az.summary(idata))
     az.plot_trace(idata, compact=False, show=True)
     az.plot_pair(idata, var_names=["x0", "x1"], kind="kde", marginals=True, show=True)
+    az.plot_autocorr(idata, var_names=["x0", "x1"], show=True, combined=True)
