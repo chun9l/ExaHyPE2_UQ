@@ -79,4 +79,4 @@ burnin = 5
 my_chain = tda.sample(my_posteriors, my_proposal, iterations=iterations, n_chains=2, subchain_length=2, force_sequential=True)
 
 idata = tda.to_inference_data(my_chain, level=2, burnin=burnin)
-az.summary(idata)
+print(az.summary(idata))
