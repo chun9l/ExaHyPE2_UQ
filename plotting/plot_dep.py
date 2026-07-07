@@ -204,6 +204,7 @@ def plot(
     bar_height=0.6,
     show_legend=True,
     show=False,
+    show_zoom=False,
     save_path=None,
 ):
     
@@ -289,28 +290,29 @@ def plot(
 
         handles += chain_patches
         
-    axins = zoomed_inset_axes(
-    ax,
-    zoom=2,
-    loc='lower right',
-    bbox_to_anchor=(1.1, 0.0),  # just outside the right edge
-    bbox_transform=ax.transAxes,
-    borderpad=0
-    )
-    
-    # subregion of the original image. Hardcoded
-    x1, x2, y1, y2 = 3000, 3150, 3.7, 4.3
-    axins.set_xlim(x1, x2)
-    axins.set_ylim(y1, y2)
-    
-    # Plot bars again in zoomed axis. Wasteful but quick
-    plot_barh(axins, node_data, level_color_map, bar_height=bar_height)
+    if show_zoom:
+        axins = zoomed_inset_axes(
+        ax,
+        zoom=2,
+        loc='lower right',
+        bbox_to_anchor=(1.1, 0.0),  # just outside the right edge
+        bbox_transform=ax.transAxes,
+        borderpad=0
+        )
+        
+        # subregion of the original image. Hardcoded
+        x1, x2, y1, y2 = 3000, 3150, 3.7, 4.3
+        axins.set_xlim(x1, x2)
+        axins.set_ylim(y1, y2)
+        
+        # Plot bars again in zoomed axis. Wasteful but quick
+        plot_barh(axins, node_data, level_color_map, bar_height=bar_height)
 
-    # draw a bbox of the region of the inset Axes in the parent Axes and
-    # connecting lines between the bbox and the inset Axes area
-    mark_inset(ax, axins, loc1=2, loc2=3, fc="none", ec="black", lw=0.5)
-    axins.yaxis.set_visible(False)
-    axins.tick_params(axis='x', rotation=45, labelsize=6)
+        # draw a bbox of the region of the inset Axes in the parent Axes and
+        # connecting lines between the bbox and the inset Axes area
+        mark_inset(ax, axins, loc1=2, loc2=3, fc="none", ec="black", lw=0.5)
+        axins.yaxis.set_visible(False)
+        axins.tick_params(axis='x', rotation=45, labelsize=6)
     
     fig.get_layout_engine().set(rect=(0, 0, 0.9, 1))
 
@@ -344,5 +346,6 @@ if __name__ == "__main__":
         title               = "Process Uptime",
         # show                = True,
         show_legend         = False,
+        show_zoom           = True,
         save_path           = f"uptime_{slurm_job_id}.png",
     )
