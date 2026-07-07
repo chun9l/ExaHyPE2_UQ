@@ -76,7 +76,7 @@ my_proposal = tda.GaussianRandomWalk(C=rwmh_cov, scaling=rmwh_scaling, adaptive=
 # initialise the chain
 iterations = 10
 burnin = 5
-my_chain = tda.sample(my_posteriors, my_proposal, iterations=iterations, n_chains=2, subchain_length=2, force_sequential=True)
+my_chain = tda.sample(my_posteriors, my_proposal, iterations=iterations, n_chains=2, subchain_length=2)
 
 idata = tda.to_inference_data(my_chain, level=2, burnin=burnin)
 print(az.summary(idata))

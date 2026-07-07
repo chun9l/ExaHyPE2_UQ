@@ -18,7 +18,7 @@ class PredatorPreyModel_l0(umbridge.Model):
         self.logging = logging
         self.slurm_id = str(os.getenv("SLURM_ARRAY_JOB_ID", 0))
         self.job_arr_id = str(os.getenv("SLURM_ARRAY_TASK_ID", 0)) 
-        self.output_dir = "../results" + os.sep + str(self.slurm_id) + "_" + str(self.job_arr_id) + "/"
+        self.output_dir = "/nobackup/mghw54/ExaHyPE2_UQ/results" + str(self.slurm_id) + os.sep + str(self.slurm_id) + "_" + str(self.job_arr_id) + "/"
 
         os.system(f"mkdir -p {self.output_dir}")
 
@@ -62,15 +62,15 @@ class PredatorPreyModel_l0(umbridge.Model):
         
         # solve the initial value problem.
         if self.logging == True:
-                request += 1
-                self.start_time = datetime.datetime.now().strftime("%H:%M:%S.%f %d/%m/%Y")
+            request += 1
+            self.start_time = datetime.datetime.now().strftime("%H:%M:%S.%f %d/%m/%Y")
 
         self.y = solve_ivp(lambda t, y: self.dydx(t, y, a, b, c, d), self.t_span, np.array([P_0, Q_0]), t_eval=self.datapoints) 
         time.sleep(1)
 
-        if self.logging == True:
-                self.writer.writerow([request, level, chain_id, self.start_time, datetime.datetime.now().strftime("%H:%M:%S.%f %d/%m/%Y")])
-                self.active_time_log.flush()
+        if self.logging == True and chain_id != "None":
+            self.writer.writerow([request, level, chain_id, self.start_time, datetime.datetime.now().strftime("%H:%M:%S.%f %d/%m/%Y")])
+            self.active_time_log.flush()
 
         
         # return the results, only if the integration succeeded.
@@ -86,7 +86,7 @@ class PredatorPreyModel_l1(umbridge.Model):
         self.logging = logging
         self.slurm_id = str(os.getenv("SLURM_ARRAY_JOB_ID", 0))
         self.job_arr_id = str(os.getenv("SLURM_ARRAY_TASK_ID", 0)) 
-        self.output_dir = "../results" + os.sep + str(self.slurm_id) + "_" + str(self.job_arr_id) + "/"
+        self.output_dir = "/nobackup/mghw54/ExaHyPE2_UQ/results" + os.sep + str(self.slurm_id) + "_" + str(self.job_arr_id) + "/"
 
         if self.logging == True:
             print("Logging enabled")
@@ -123,15 +123,15 @@ class PredatorPreyModel_l1(umbridge.Model):
         
         # solve the initial value problem.
         if self.logging == True:
-                request += 1
-                self.start_time = datetime.datetime.now().strftime("%H:%M:%S.%f %d/%m/%Y")
+            request += 1
+            self.start_time = datetime.datetime.now().strftime("%H:%M:%S.%f %d/%m/%Y")
 
         self.y = solve_ivp(lambda t, y: self.dydx(t, y, a, b, c, d), self.t_span, np.array([P_0, Q_0]), t_eval=self.datapoints) 
         time.sleep(5)
 
-        if self.logging == True:
-                self.writer.writerow([request, level, chain_id, self.start_time, datetime.datetime.now().strftime("%H:%M:%S.%f %d/%m/%Y")])
-                self.active_time_log.flush()
+        if self.logging == True and chain_id != "None":
+            self.writer.writerow([request, level, chain_id, self.start_time, datetime.datetime.now().strftime("%H:%M:%S.%f %d/%m/%Y")])
+            self.active_time_log.flush()
 
         
         # return the results, only if the integration succeeded.
@@ -148,7 +148,7 @@ class PredatorPreyModel_l2(umbridge.Model):
         self.logging = logging
         self.slurm_id = str(os.getenv("SLURM_ARRAY_JOB_ID", 0))
         self.job_arr_id = str(os.getenv("SLURM_ARRAY_TASK_ID", 0)) 
-        self.output_dir = "../results" + os.sep + str(self.slurm_id) + "_" + str(self.job_arr_id) + "/"
+        self.output_dir = "/nobackup/mghw54/ExaHyPE2_UQ/results" + os.sep + str(self.slurm_id) + "_" + str(self.job_arr_id) + "/"
 
         if self.logging == True:
             print("Logging enabled")
@@ -185,15 +185,15 @@ class PredatorPreyModel_l2(umbridge.Model):
         
         # solve the initial value problem.
         if self.logging == True:
-                request += 1
-                self.start_time = datetime.datetime.now().strftime("%H:%M:%S.%f %d/%m/%Y")
+            request += 1
+            self.start_time = datetime.datetime.now().strftime("%H:%M:%S.%f %d/%m/%Y")
 
         self.y = solve_ivp(lambda t, y: self.dydx(t, y, a, b, c, d), self.t_span, np.array([P_0, Q_0]), t_eval=self.datapoints) 
         time.sleep(30)
 
-        if self.logging == True:
-                self.writer.writerow([request, level, chain_id, self.start_time, datetime.datetime.now().strftime("%H:%M:%S.%f %d/%m/%Y")])
-                self.active_time_log.flush()
+        if self.logging == True and chain_id != "None":
+            self.writer.writerow([request, level, chain_id, self.start_time, datetime.datetime.now().strftime("%H:%M:%S.%f %d/%m/%Y")])
+            self.active_time_log.flush()
 
         
         # return the results, only if the integration succeeded.
