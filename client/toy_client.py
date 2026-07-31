@@ -109,9 +109,10 @@ my_loglike_l1 = tda.GaussianLogLike(data_l1, cov_likelihood_l1)
 my_loglike_l0 = tda.GaussianLogLike(data_l0, cov_likelihood_l0)
 
 # definea umbridge models, overiding exact model
-my_model_l0 = tda.UmBridgeModel(umbridge.HTTPModel("http://localhost:4242", "l0"))
-my_model_l1 = tda.UmBridgeModel(umbridge.HTTPModel("http://localhost:4242", "l1"))
-my_model_l2 = tda.UmBridgeModel(umbridge.HTTPModel("http://localhost:4242", "l2"))
+url = "http://localhost:4242"
+my_model_l0 = tda.UmBridgeModel(umbridge.HTTPModel(url, "l0"))
+my_model_l1 = tda.UmBridgeModel(umbridge.HTTPModel(url, "l1"))
+my_model_l2 = tda.UmBridgeModel(umbridge.HTTPModel(url, "l2"))
 
 # set up the link factories
 my_posterior_l2 = tda.Posterior(my_prior, my_loglike_l2, my_model_l2)
@@ -130,9 +131,9 @@ my_proposal = tda.GaussianRandomWalk(C=rwmh_cov, scaling=rmwh_scaling, adaptive=
 
 
 # initialise the chain
-iterations = 2
+iterations = 25
 burnin = 1
-my_chain = tda.sample(my_posteriors, my_proposal, iterations=iterations, n_chains=5, subchain_length=[5, 10])
+my_chain = tda.sample(my_posteriors, my_proposal, iterations=iterations, n_chains=5, subchain_length=[5, 15])
 
 idata = tda.to_inference_data(my_chain, level=2, burnin=burnin)
 print(az.summary(idata))

@@ -10,6 +10,8 @@ import random
 np.random.seed(0)
 random.seed(0)
 
+log_flag = True
+
 request = 0
 t_eval = np.linspace(0, 12, 25)
 
@@ -68,7 +70,12 @@ class PredatorPreyModel_l0(umbridge.Model):
             self.start_time = datetime.datetime.now().strftime("%H:%M:%S.%f %d/%m/%Y")
 
         self.y = solve_ivp(lambda t, y: self.dydx(t, y, a, b, c, d), self.t_span, np.array([P_0, Q_0]), t_eval=self.datapoints) 
-        time.sleep(random.randint(0, 5))
+
+        # Artificial workload
+        A = np.random.rand(300, 300)
+        end_time = time.time() + random.randint(0, 5)
+        while time.time() < end_time:
+            np.linalg.eig(A)
 
         if self.logging == True and chain_id != "None":
             self.writer.writerow([request, level, chain_id, self.start_time, datetime.datetime.now().strftime("%H:%M:%S.%f %d/%m/%Y")])
@@ -129,7 +136,12 @@ class PredatorPreyModel_l1(umbridge.Model):
             self.start_time = datetime.datetime.now().strftime("%H:%M:%S.%f %d/%m/%Y")
 
         self.y = solve_ivp(lambda t, y: self.dydx(t, y, a, b, c, d), self.t_span, np.array([P_0, Q_0]), t_eval=self.datapoints) 
-        time.sleep(random.randint(5, 10))
+
+        # Artificial workload
+        A = np.random.rand(600, 600)
+        end_time = time.time() + random.randint(10, 15)
+        while time.time() < end_time:
+            np.linalg.eig(A)
 
         if self.logging == True and chain_id != "None":
             self.writer.writerow([request, level, chain_id, self.start_time, datetime.datetime.now().strftime("%H:%M:%S.%f %d/%m/%Y")])
@@ -162,7 +174,7 @@ class PredatorPreyModel_l2(umbridge.Model):
         
         # set the span of the integration.
         self.t_span = [0, self.datapoints[-1]]
-        
+
     def get_input_sizes(self, config):
         return [6]
 
@@ -191,7 +203,12 @@ class PredatorPreyModel_l2(umbridge.Model):
             self.start_time = datetime.datetime.now().strftime("%H:%M:%S.%f %d/%m/%Y")
 
         self.y = solve_ivp(lambda t, y: self.dydx(t, y, a, b, c, d), self.t_span, np.array([P_0, Q_0]), t_eval=self.datapoints) 
-        time.sleep(random.randint(25, 50))
+
+        # Artificial workload
+        A = np.random.rand(1000, 1000)
+        end_time = time.time() + random.randint(25, 50)
+        while time.time() < end_time:
+            np.linalg.eig(A)
 
         if self.logging == True and chain_id != "None":
             self.writer.writerow([request, level, chain_id, self.start_time, datetime.datetime.now().strftime("%H:%M:%S.%f %d/%m/%Y")])
@@ -209,7 +226,7 @@ if "PORT" in os.environ:
 else:
     port = 4249
 
-model_l0 = PredatorPreyModel_l0(logging=True)
-model_l1 = PredatorPreyModel_l1(logging=True)
-model_l2 = PredatorPreyModel_l2(logging=True)
+model_l0 = PredatorPreyModel_l0(logging=log_flag)
+model_l1 = PredatorPreyModel_l1(logging=log_flag)
+model_l2 = PredatorPreyModel_l2(logging=log_flag)
 umbridge.serve_models([model_l0, model_l1, model_l2], int(port))
