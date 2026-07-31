@@ -336,7 +336,7 @@ def plot(
 
 # Modify to suit your needs
 if __name__ == "__main__":
-    slurm_job_id = "10956759"
+    slurm_job_id = "18086735"
     file_path = "../results/" +  slurm_job_id + os.sep
     log_files = {f"{slurm_job_id}_{i}": f"{file_path + slurm_job_id}_{i}/active_time.log" for i in range(1, 6)}
     plot(
@@ -346,6 +346,6 @@ if __name__ == "__main__":
         title               = "Process Uptime",
         # show                = True,
         show_legend         = False,
-        show_zoom           = True,
-        save_path           = f"uptime_{slurm_job_id}.png",
+        show_zoom           = False,
+        save_path           = f"uptime_{slurm_job_id}.pdf",
     )
