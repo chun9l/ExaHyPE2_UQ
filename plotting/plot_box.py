@@ -110,10 +110,17 @@ def plot(
         fig.suptitle(title)
 
         # Plot boxplots
-        hq = ax.boxplot(plot_data[title], meanline=True, showmeans=True,
-                            meanprops={"linestyle": "--", "color": "black", "linewidth": "1.5"},
-                            medianprops={"linestyle": "-", "color": "black", "linewidth": "1.5"})
-
+	slurm = ax.boxplot(data_slurm, positions=np.array(range(len(data_slurm))) * 2 - 0.4, meanline=True,
+                           showmeans=True, meanprops={"linestyle": "--", "color": "black", "linewidth": "1.5"},
+                           medianprops={"linestyle": "-", "color": "black", "linewidth": "1.5"})
+        hq = ax.boxplot(data_hq, positions=np.array(range(len(data_hq))) * 2.0 + 0.4, meanline=True, showmeans=True,
+                        meanprops={"linestyle": "--", "color": "black", "linewidth": "1.5"},
+                        medianprops={"linestyle": "-", "color": "black", "linewidth": "1.5"})
+        ax.set_xticks(range(0, len(benchmark) * 2, 2), benchmark)
+        set_fill_color(slurm, "blue")
+        set_fill_color(hq, "red")
+        ax.plot([], 'b-', linewidth=1, label="SLURM")
+        ax.plot([], 'r-', linewidth=1, label="HQ")
         ax.plot([], 'k-', linewidth=1.5, label="Median")
         ax.plot([], 'k--', linewidth=1.5, label="Mean")
         ax.plot([], 'ko', markerfacecolor='white', label="Fliers")
@@ -123,8 +130,6 @@ def plot(
             x_labels = list(node_data["level"].unique())
         else:
             x_labels = list(node_data["slurm_id"].unique())
-
-        ax.set_xticks(range(1, len(x_labels) + 1))
 
         if by_level == True:
             ax.set_xticklabels([f"Level {i}" for i in range(len(x_labels))])
