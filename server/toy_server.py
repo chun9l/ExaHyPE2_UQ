@@ -73,7 +73,7 @@ class PredatorPreyModel_l0(umbridge.Model):
 
         # Artificial workload
         A = np.random.rand(300, 300)
-        end_time = time.time() + random.randint(0, 5)
+        end_time = time.time() + random.randint(2, 5)
         while time.time() < end_time:
             np.linalg.eig(A)
 
@@ -139,7 +139,7 @@ class PredatorPreyModel_l1(umbridge.Model):
 
         # Artificial workload
         A = np.random.rand(600, 600)
-        end_time = time.time() + random.randint(10, 15)
+        end_time = time.time() + random.randint(10, 20)
         while time.time() < end_time:
             np.linalg.eig(A)
 

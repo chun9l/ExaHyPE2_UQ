@@ -4,10 +4,10 @@
 # Change to suit your needs
 
 #SBATCH --partition=shared
-#SBATCH --ntasks-per-node=2
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=32G
-#SBATCH --time=72:00:00
+#SBATCH --ntasks-per-node=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=4G
+#SBATCH --time=04:40:00
 ###################################################################################################################################
 
 # Launch model server, send back server URL and wait so that SLURM does not cancel the allocation.
@@ -39,14 +39,13 @@ export PORT=$port
 module purge
 module load gcc/13.2 openmpi/4.1.5 hdf5 netcdf cmake/3.30.5
 
-. ~/.bashrc
-conda activate python3.12
+. ~/nobackup/.venv/bin/activate
 
 # Python script that gets node usage (Optional)
 # python ~/nobackup/ExaHyPE2_UQ/umbridge/hpc/cpu_ram_log.py -u mghw54 -o ${SLURM_ARRAY_JOB_ID}_$SLURM_ARRAY_TASK_ID.log --interval=5 &
 
 # Launch UM-Bridge server
-python -u ~/nobackup/ExaHyPE2_UQ/FWI_tinyda_server.py &
+python -u ~/nobackup/ExaHyPE2_UQ/server/toy_server.py &
 
 #####################################################################################################################################
 host=$(hostname -I | awk '{print $1}')

@@ -46,4 +46,4 @@ def extract_times(save_dir, starttime, endtime):
 
 
 save_dir = "/nobackup/mghw54/ExaHyPE2_UQ/results/"
-extract_times(save_dir, "2026-07-30T23:00:00", "2026-07-31T08:00:00")
+extract_times(save_dir, "2026-08-04T22:20:00", "2026-08-05T07:30:00")

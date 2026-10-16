@@ -7,7 +7,9 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=2G
-#SBATCH --time=00:15:00
+#SBATCH --time=00:02:00
+#SBATCH --output=/dev/null
+#SBATCH --error=/dev/null
 ###################################################################################################################################
 
 # Launch model server, send back server URL and wait so that SLURM does not cancel the allocation.
