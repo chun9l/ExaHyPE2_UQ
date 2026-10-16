@@ -258,7 +258,7 @@ def plot(
     ax.invert_yaxis()
 
     ax.set_xlabel(
-        f"Elapsed time [minutes]\n[reference: {ref_dt.strftime(DATETIME_FMT)}]"
+        f"Elapsed time [minutes]"
     )
     ax.set_title(title)
     ax.grid(axis="x", linestyle="--", alpha=0.4)
@@ -336,16 +336,16 @@ def plot(
 
 # Modify to suit your needs
 if __name__ == "__main__":
-    slurm_job_id = "18086735"
+    slurm_job_id = "10956759"
     file_path = "../results/" +  slurm_job_id + os.sep
     log_files = {f"{slurm_job_id}_{i}": f"{file_path + slurm_job_id}_{i}/active_time.log" for i in range(1, 6)}
     plot(
         log_files,
         show_dep            = True,
         arrow_chains        = [2],
-        title               = "Process Uptime",
+        title               = "Request Uptime",
         # show                = True,
         show_legend         = False,
-        show_zoom           = False,
-        save_path           = f"uptime_{slurm_job_id}.pdf",
+        show_zoom           = True,
+        save_path           = f"uptime_{slurm_job_id}.png",
     )
